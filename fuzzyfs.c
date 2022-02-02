@@ -100,7 +100,9 @@ char* fix_path_case(const char* path)
 		}
 
 		// If the current capitalization of the path (up to the current chunk) is incorrect,
-		// (that is, if getting info about the currently-specified file returns a nonzero exit code)
+		// (that is, if getting info about the currently-specified chunk returns a nonzero exit code)
+		// Remember, strtok_r will place a null terminator after the current chunk, so we're not
+		// doing the whole path, just from the string beginning to the null terminator.
 		if (lstat(p, &s))
 		{
 			// If we're not on the first chunk,
