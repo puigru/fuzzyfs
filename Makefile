@@ -8,3 +8,6 @@ fuzzyfs: fuzzyfs.c
 
 install:
 	install fuzzyfs /usr/local/bin
+
+clean:
+	rm -f fuzzyfs
