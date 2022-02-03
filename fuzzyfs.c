@@ -207,7 +207,8 @@ static int fuzzyfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 	struct dirent *de;
 
-	while ((de = readdir((DIR *)fi->fh)) != NULL)
+	// Including an intermediate unitptr_t cast avoids a compiler warning.
+	while ((de = readdir((DIR *)(uintptr_t)fi->fh)) != NULL)
 	{
 		struct stat st;
 		memset(&st, 0, sizeof(st));
@@ -227,7 +228,8 @@ static int fuzzyfs_releasedir(const char *path, struct fuse_file_info *fi)
 
 	int res;
 
-        res = closedir((DIR *)fi->fh);
+	// Including an intermediate unitptr_t cast avoids a compiler warning.
+        res = closedir((DIR *)(uintptr_t)fi->fh);
         if (res == -1)
                 res = -errno;
 
