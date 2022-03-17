@@ -36,6 +36,13 @@ static const char* DOT = ".";
 
 const char* root = NULL;
 
+/*
+ * If the requested path is '/', returns a pointer to the static DOT.
+ * If the requested path starts with '/', increments the pointer past
+ * the slash and returns the incremented pointer.
+ * Leaves the string otherwise untouched.
+ * Does not allocate any memory.
+ */
 const char* fix_path(const char* path)
 {
 	const char *p = path;
@@ -46,10 +53,20 @@ const char* fix_path(const char* path)
 			return DOT;
 		p++;
 	}
-
 	return p;
 }
 
+/* Get the correct case for a file path by searching case-insenitively for matches.
+ * Input: path - a string holding the path that you want to correct the case of.
+ * This will iterate over slash-delimited chunks of path. On each iteration, it corrects
+ * the case of the current chunk (if correction is needed) by looking for files in the
+ * current chunk's parent directory (constructed from previous case-corrected chunks) that
+ * case-insensitively match the current chunk. If one is found, the current chunk is corrected.
+ * This repeats until the entire path is case-corrected. The case-corrected path is returned.
+ *
+ * A note on memory management: this allocates new memory for the return value if it succeeds.
+ * If it fails, it will free all the memory that it allocated.
+*/
 char* fix_path_case(const char* path)
 {
 	char *p;
@@ -67,26 +84,37 @@ char* fix_path_case(const char* path)
 		if (len)
 			*(token - 1) = '/'; // restore delimiter
 
+		// If the current capitalization of the path (up to the current chunk) is incorrect,
+		// (that is, if getting info about the currently-specified chunk returns a nonzero exit code)
+		// Remember, strtok_r will place a null terminator after the current chunk, so we're not
+		// doing the whole path, just from the string beginning to the null terminator.
 		if (lstat(p, &s))
 		{
 			if (len)
 			{
+				// Note: this allocates new memory!
 				parent = (char*)malloc(len + 1);
 				strncpy(parent, p, len);
 				parent[len] = '\0';
 			}
 			else
+			{
+				// Note: allocates new memory.
 				parent = strdup(DOT);
+			}
 
 			dp = opendir(parent);
 			if (dp == NULL)
 			{
 				free(p);
+				p = NULL;
 				free(parent);
+				parent = NULL;
 				return NULL;
 			}
 
 			found = FALSE;
+			// Note: don't free de. It's managed separately.
 			while ((de = readdir(dp)) != NULL)
 			{
 				if (strcasecmp(de->d_name, token) == 0)
@@ -98,11 +126,14 @@ char* fix_path_case(const char* path)
 				}
 			}
 			closedir(dp);
+			// parent isn't needed anymore.
+			free(parent);
+			parent = NULL;
 
 			if (!found)
 			{
 				free(p);
-				free(parent);
+				p = NULL;
 				return NULL;
 			}
 		}
@@ -113,6 +144,7 @@ char* fix_path_case(const char* path)
 	return p;
 }
 
+// Gets file attributes, correcting the path's capitalization if needed.
 static int fuzzyfs_getattr(const char *path, struct stat *stbuf)
 {
 	int res;
@@ -126,15 +158,18 @@ static int fuzzyfs_getattr(const char *path, struct stat *stbuf)
 	if (errno != ENOENT)
 		return -errno;
 
+	// Note: this allocates new memory for p, unless it returns an error.
 	if (!(p = fix_path_case(p)))
 		return -ENOENT;
 
 	res = lstat(p, stbuf);
 	free(p);
+	p = NULL;
 	assert(res != -1);
 	return 0;
 }
 
+// Reads the contents of a directory, correcting the path's capitalization if needed.
 static int fuzzyfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 			   off_t offset, struct fuse_file_info *fi)
 {
@@ -152,15 +187,19 @@ static int fuzzyfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		if (errno != ENOENT)
 			return -errno;
 
+		// Note: allocates new memory for p.
 		if (!(p = fix_path_case(p)))
 			return -ENOENT;
 
 		dp = opendir(p);
+		// fix_path_case allocated new memory. Free it.
 		free(p);
+		p = NULL;
 		assert(dp != NULL);
 	}
 
-	while ((de = readdir(dp)) != NULL) {
+	while ((de = readdir(dp)) != NULL)
+	{
 		struct stat st;
 		memset(&st, 0, sizeof(st));
 		st.st_ino = de->d_ino;
@@ -168,11 +207,11 @@ static int fuzzyfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		if (filler(buf, de->d_name, &st, 0))
 			break;
 	}
-
 	closedir(dp);
 	return 0;
 }
 
+// Basic check that a file exists.
 static int fuzzyfs_open(const char *path, struct fuse_file_info *fi)
 {
 	int res;
@@ -180,7 +219,9 @@ static int fuzzyfs_open(const char *path, struct fuse_file_info *fi)
 
 	p = (char*)fix_path(path);
 	res = open(p, fi->flags);
-	if (res != -1) {
+
+	if (res != -1)
+	{
 		close(res);
 		return 0;
 	}
@@ -188,16 +229,19 @@ static int fuzzyfs_open(const char *path, struct fuse_file_info *fi)
 	if (errno != ENOENT)
 		return -errno;
 
+	// Allocates new memory for p.
 	if (!(p = fix_path_case(p)))
 		return -ENOENT;
 
 	res = open(p, fi->flags);
 	free(p);
+	p = NULL;
 	close(res);
 	assert(res != -1);
 	return 0;
 }
 
+// Read size bytes from the given file into the buffer buf, beginning offset bytes into the file.
 static int fuzzyfs_read(const char *path, char *buf, size_t size, off_t offset,
 			struct fuse_file_info *fi)
 {
@@ -214,11 +258,14 @@ static int fuzzyfs_read(const char *path, char *buf, size_t size, off_t offset,
 		if (errno != ENOENT)
 			return -errno;
 
+		// Note: allocates new memory for p.
 		if (!(p = fix_path_case(p)))
 			return -ENOENT;
 
 		fd = open(p, O_RDONLY);
+		// Free the memory that fix_path_case allocated.
 		free(p);
+		p = NULL;
 		assert(fd != -1);
 	}
 
@@ -232,6 +279,7 @@ static int fuzzyfs_read(const char *path, char *buf, size_t size, off_t offset,
 
 static void *fuzzyfs_init(struct fuse_conn_info *conn)
 {
+	// cd into the root directory, wherever that is.
 	if (chdir(root) == -1)
 	{
 		perror("chdir");
@@ -244,10 +292,11 @@ static void *fuzzyfs_init(struct fuse_conn_info *conn)
 static int fuzzyfs_opt_parse(void *data, const char *arg, int key,
 			     struct fuse_args *outargs)
 {
+	// Note: this will be triggered only by the first argument.
 	if (!root && key == FUSE_OPT_KEY_NONOPT)
 	{
 		// when fuse starts, it changes the workdir to the root
-		// must resolve relative paths beforehand
+		// so we must resolve relative paths beforehand
 		if (!(root = realpath(arg, NULL)))
 		{
 			perror(outargs->argv[0]);
@@ -259,6 +308,7 @@ static int fuzzyfs_opt_parse(void *data, const char *arg, int key,
 	return 1;
 }
 
+// Setup the mapping between the fuse functions and the fuzzyfs functions.
 static struct fuse_operations fuzzyfs_oper = {
 	.getattr	= fuzzyfs_getattr,
 	.readdir	= fuzzyfs_readdir,
