@@ -50,7 +50,6 @@ const char* fix_path(const char* path)
 	if (p[0] == '/')
 	{
 		if (p[1] == '\0')
-			// Return DOT.
 			return DOT;
 		p++;
 	}
@@ -83,9 +82,7 @@ char* fix_path_case(const char* path)
 	{
 		len = token - p;
 		if (len)
-		{
 			*(token - 1) = '/'; // restore delimiter
-		}
 
 		// If the current capitalization of the path (up to the current chunk) is incorrect,
 		// (that is, if getting info about the currently-specified chunk returns a nonzero exit code)
@@ -156,20 +153,14 @@ static int fuzzyfs_getattr(const char *path, struct stat *stbuf)
 	p = (char*)fix_path(path);
 	res = lstat(p, stbuf);
 	if (!res)
-	{
 		return 0;
-	}
 
 	if (errno != ENOENT)
-	{
 		return -errno;
-	}
 
 	// Note: this allocates new memory for p, unless it returns an error.
 	if (!(p = fix_path_case(p)))
-	{
 		return -ENOENT;
-	}
 
 	res = lstat(p, stbuf);
 	free(p);
@@ -194,15 +185,11 @@ static int fuzzyfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	if (dp == NULL)
 	{
 		if (errno != ENOENT)
-		{
 			return -errno;
-		}
 
 		// Note: allocates new memory for p.
 		if (!(p = fix_path_case(p)))
-		{
 			return -ENOENT;
-		}
 
 		dp = opendir(p);
 		// fix_path_case allocated new memory. Free it.
@@ -218,9 +205,7 @@ static int fuzzyfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		st.st_ino = de->d_ino;
 		st.st_mode = de->d_type << 12;
 		if (filler(buf, de->d_name, &st, 0))
-		{
 			break;
-		}
 	}
 	closedir(dp);
 	return 0;
@@ -242,15 +227,11 @@ static int fuzzyfs_open(const char *path, struct fuse_file_info *fi)
 	}
 
 	if (errno != ENOENT)
-	{
 		return -errno;
-	}
 
 	// Allocates new memory for p.
 	if (!(p = fix_path_case(p)))
-	{
 		return -ENOENT;
-	}
 
 	res = open(p, fi->flags);
 	free(p);
@@ -275,15 +256,11 @@ static int fuzzyfs_read(const char *path, char *buf, size_t size, off_t offset,
 	if (fd == -1)
 	{
 		if (errno != ENOENT)
-		{
 			return -errno;
-		}
 
 		// Note: allocates new memory for p.
 		if (!(p = fix_path_case(p)))
-		{
 			return -ENOENT;
-		}
 
 		fd = open(p, O_RDONLY);
 		// Free the memory that fix_path_case allocated.
@@ -294,9 +271,7 @@ static int fuzzyfs_read(const char *path, char *buf, size_t size, off_t offset,
 
 	res = pread(fd, buf, size, offset);
 	if (res == -1)
-	{
 		res = -errno;
-	}
 
 	close(fd);
 	return res;
