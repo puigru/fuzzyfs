@@ -43,7 +43,7 @@ const char *root = NULL;
  * Leaves the string otherwise untouched.
  * Does not allocate any memory.
  */
-const char* fix_path(const char *path)
+const char *fix_path(const char *path)
 {
 	const char *p = path;
 
@@ -208,7 +208,7 @@ static int fuzzyfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	struct dirent *de;
 
 	// Including an intermediate unitptr_t cast avoids a compiler warning.
-	while ((de = readdir((DIR *)(uintptr_t)fi->fh)) != NULL)
+	while ((de = readdir((DIR*)(uintptr_t)fi->fh)) != NULL)
 	{
 		struct stat st;
 		memset(&st, 0, sizeof(st));
@@ -229,11 +229,11 @@ static int fuzzyfs_releasedir(const char *path, struct fuse_file_info *fi)
 	int res;
 
 	// Including an intermediate unitptr_t cast avoids a compiler warning.
-        res = closedir((DIR *)(uintptr_t)fi->fh);
-        if (res == -1)
-                res = -errno;
+	res = closedir((DIR*)(uintptr_t)fi->fh);
+	if (res == -1)
+		res = -errno;
 
-        return res;
+	return res;
 }
 
 // Open a file handle and put it in fi->fh.
