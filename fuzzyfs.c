@@ -67,7 +67,7 @@ const char *fix_path(const char *path)
  * A note on memory management: this allocates new memory for the return value if it succeeds.
  * If it fails, it will free all the memory that it allocated.
 */
-char* fix_path_case(const char *path)
+char *fix_path_case(const char *path)
 {
 	char *p;
 	DIR *dp;
